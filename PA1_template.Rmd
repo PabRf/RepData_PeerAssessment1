@@ -6,20 +6,168 @@ output:
 ---
 
 
-## Loading and preprocessing the data
+
+## Code for Loading and Preprocessing the Data
+
+```{r, echo=T}
+setwd("~/00.Coursera/RepData_PeerAssessment1")
+list.files()
+unzip("activity.zip")
+list.files()
+data <- read.csv("activity.csv")
+str(data)
+data <- read.csv("activity.csv", stringsAsFactors = F, col.names=c("Steps", "Date", "Interval"), colClasses=c("numeric", "Date", "numeric"))
+```
 
 
 
-## What is mean total number of steps taken per day?
+## Total Number of Steps Taken per Day
+
+The following histogram shows the total steps taken each day between 1st October 2012 and 30th November 2012.
+
+```{r, echo=T}
+library(dplyr)
+by_date <- group_by(data, Date)
+step_sum <- summarize(by_date, Total = sum(Steps))
+step_sum <- mutate(step_sum, Day=c(1:61))
+barplot(step_sum$Total, names.arg=step_sum$Day, col="blue", main="Total Steps Taken Each Day", ylab="Number of Steps", ylim=c(0,25000), xlab="Day (1st October 2012 - 30th November 2012)", axis.lty=1, cex=0.75, cex.names=0.8, las=2, mgp=c(3,1,0))
+```
+
+### Mean and Median Total Steps per Day
+
+The following tables present the mean and median number of steps taken per day.
+
+```{r, echo=T}
+by_date <- group_by(data, Date)
+step_mean <- as.data.frame(summarize(by_date, "Mean Steps"=mean(Steps, na.rm=T)))
+step_mean
+```
+
+```{r, echo=T}
+by_date <- group_by(data, Date)
+step_median <- as.data.frame(summarize(by_date, "Median Steps"=median(Steps, na.rm=T)))
+step_median
+```
+
+
+## Average Daily Activity Pattern?
+
+The following plot shows the average number of steps taken during each 5-minute interval period, averaged across all days.
+
+```{r, echo=T}
+by_interval <- group_by(data, Interval)
+intv_mean <- summarize(by_interval, "Mean_Steps" = mean(Steps, na.rm=T))
+plot(intv_mean$Interval, intv_mean$Mean_Steps, type="l", main="Average Steps Taken During Each 5-Minute Interval", ylab="Average Number of Steps", ylim=c(0,250), xlab="Interval", xlim=c(0, 2500))
+```
+
+
+The 5-minute interval averaged across all the days in the dataset, with the maximum number of steps is as follows:
+
+```{r, echo=T}
+head(arrange(intv_mean, desc(Mean_Steps))[1,1])
+```
 
 
 
-## What is the average daily activity pattern?
+## Imputing Missing Values
+
+The total number of missing values in the dataset and in each column are as follows:
+
+```{r, echo=T}
+table(is.na(data))
+table(is.na(data$Steps))
+table(is.na(data$Date))
+table(is.na(data$Interval))
+```
+
+The missing data pattern was further analyzed as suggested by Sagar (1). The following graphic confirmed that there are no missing data in the "Date" and "Interval" columns, but identified the 2304 missing values in the "Steps" column.
+
+```{r, echo=T}
+library(mice)
+library(VIM)
+library(lattice)
+md.pattern(data)
+```
+
+Plotting the missing data revealed that this represents 13% of the "Steps" data.
+
+```{r, echo=T}
+data_miss <- aggr(data, col=mdc(1:2), numbers=TRUE, sortVars=TRUE, labels=names(data), cex.axis=.7, gap=3, ylab=c("Proportion of missingness","Missingness Pattern"))
+```
+
+Margin plots revealed that there is no significant difference in "Date" or "Interval" values whether or not there are missing values in the "Steps" variable (2).
+
+```{r, echo=T}
+marginplot(data[, c("Date", "Steps")], col = mdc(1:2), cex.numbers = 1.2, pch = 19)
+marginplot(data[, c("Interval", "Steps")], col = mdc(1:2), cex.numbers = 1.2, pch = 19)
+```
+
+Missing data was therefore replaced by predictive mean matching, creating 5 imputed datasets, each created after maximum 20 iterations, as shown below. This second dataset was used for the subsequent analyses.
+
+```{r, echo=T}
+mice_imputes <- mice(data, m=5, maxit = 20)
+mice_imputes$method
+imputed_data <- complete(mice_imputes,2)
+```
+
+The xyplot was difficult to assess due to the large number of points. However, the density plot confirmed goodness of fit.
+
+```{r, echo=T}
+xyplot(mice_imputes, Interval ~ Steps | .imp, pch = 20, cex = 0.5, main="XY Plot")
+densityplot(mice_imputes, main="Density Plot")
+```
+
+The following histogram shows the total steps taken each day between 1st October 2012 and 30th November 2012, using the imputed dataset. This demonstrates that the missing data had been filled in.
+
+```{r, echo=T}
+by_date_imp <- group_by(imputed_data, Date)
+step_sum_imp <- summarize(by_date_imp, Total = sum(Steps))
+step_sum_imp <- mutate(step_sum_imp, Day=c(1:61))
+barplot(step_sum_imp$Total, names.arg=step_sum$Day, col="blue", main="Total Steps Taken Each Day (Imputed Dataset)", ylab="Number of Steps", ylim=c(0,25000), xlab="Day (1st October 2012 - 30th November 2012)", axis.lty=1, cex=0.75, cex.names=0.8, las=2, mgp=c(3,1,0))
+```
+
+### Mean and Median Total Steps per Day (Imputed Dataset)
+
+The following tables present the mean and median number of steps taken per day, using the imputed dataset. These tables also demonstrates that the missing data had been filled in.
+
+```{r, echo=T}
+by_date_imp <- group_by(imputed_data, Date)
+step_mean_imp <- as.data.frame(summarize(by_date_imp, "Mean Steps"=mean(Steps, na.rm=T)))
+step_mean_imp
+```
+
+```{r, echo=T}
+by_date_imp <- group_by(imputed_data, Date)
+step_median_imp <- as.data.frame(summarize(by_date_imp, "Median Steps"=median(Steps, na.rm=T)))
+step_median_imp
+```
 
 
 
-## Imputing missing values
+## Differences in Activity Patterns Between Weekdays and Weekends?
+
+The following panel plot shows the average number of steps taken during each 5-minute interval period, averaged across all days, for weekdays and for weekends. It shows clear differences in activity between weekday days and weekend days.
+
+```{r, echo=T}
+imputed_data_w <- imputed_data %>% mutate(Weekday = if_else(weekdays(imputed_data$Date) %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday"), "Weekday", "Weekend"))
+imputed_data_wd <- filter(imputed_data_w, Weekday == "Weekday")
+imputed_data_we <- filter(imputed_data_w, Weekday == "Weekend")
+
+par(mfrow=c(2,1), mar = c(4, 4, 2.5, 1), oma=c(0.5,0.5,0.5,0.5), mgp=c(2.5,1,0))
+by_interval_wd <- group_by(imputed_data_wd, Interval)
+intv_mean_wd <- summarize(by_interval_wd, "Mean_Steps" = mean(Steps, na.rm=T))
+plot(intv_mean_wd$Interval, intv_mean_wd$Mean_Steps, type="l", main="Weekday: Average Steps During Each 5-Minute Interval", ylab="Number of Steps", ylim=c(0,250), xlab="Interval", xlim=c(0, 2500), cex.axis=0.8)
+
+by_interval_we <- group_by(imputed_data_we, Interval)
+intv_mean_we <- summarize(by_interval_we, "Mean_Steps" = mean(Steps, na.rm=T))
+plot(intv_mean_we$Interval, intv_mean_we$Mean_Steps, type="l", main="Weekend: Average Steps During Each 5-Minute Interval", ylab="Number of Steps", ylim=c(0,250), xlab="Interval", xlim=c(0, 2500), cex.axis=0.8)
+```
 
 
 
-## Are there differences in activity patterns between weekdays and weekends?
+## References
+
+1. Chaitanya Sagar. 2017. A Solution to Missing Data: Imputation Using R, KDnuggets (https://www.kdnuggets.com/2017/09/missing-data-imputation-using-r.html)
+
+2. Zhang Z. 2015. Missing Data Exploration; Highlighting Graphical Presentation of Missing Pattern. Ann Transl Med
+
